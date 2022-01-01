@@ -45,7 +45,7 @@ tir = tirsk.Tirsk()
 mc = mainari.Mainari(cfg['MINECRAFT']['server'], cfg['MINECRAFT']['game_ops'], cfg['MINECRAFT']
                      ['server_admins'], cfg['MINECRAFT'].getboolean('use_ip'), cfg['MINECRAFT'].getboolean('use_hostname'))
 km = kilometri.Kilometri()
-tar = tarot.Tarot()
+tar = tarot.Tarot(cfg["TAROT"]["token"], cfg["TAROT"]["server"], cfg["TAROT"]["admin"])
 
 objects = [rir, vit, vai, tir, opi, km, quo, mc, tag, tar]
 

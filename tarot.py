@@ -4,51 +4,21 @@ from PIL import Image
 from tempfile import NamedTemporaryFile
 from telegram import Update
 from telegram.ext import CallbackContext
+import requests
 import db
 import re
 
 
 
 class Tarot:
-    def __init__(self):
+    def __init__(self, token, url, admin):
         self.card_data = db.readSelitykset()
-    
+        # get stuff fron config
+        self.tarot_url = url
+        self.tarot_token = token
+        self.tarot_admin = admin
     def getCommands(self):
         return dict()
-
-    def get_reading(self, amount):
-        # cards in resources folder
-        cards = listdir("resources/tarot")
-        # magic shuffling
-        shuffle(cards)
-        reading = []
-        for i in range(amount):
-            # how 2 reverse a queue
-            reading.append(cards.pop())
-
-        # return the tempfile with the image
-        return(self.make_image(reading))
-
-    def make_image(self, reading):
-        reading_image = Image.new('RGB', (250 * len(reading), 429))
-
-        for i in range(len(reading)):
-            # chance for flipped card
-            if randint(0,10) == 0:
-                card_image = Image.open("resources/tarot/" + reading[i])
-                image_flipped = card_image.transpose(Image.FLIP_TOP_BOTTOM)
-                reading_image.paste(im=image_flipped, box=(250 * i, 0))
-            #normal card
-            else:
-                reading_image.paste(im=Image.open("resources/tarot/" + reading[i]), box=(250 * i, 0))
-
-        # do NamedTempFile because Linux and Windows require completely different methods for this
-        # the old Win method of making a non-delete file and then deleting it borks on Linux
-        # this will bork on Windows but who cares
-        fp = NamedTemporaryFile()
-        fp.seek(0)
-        reading_image.save(fp, 'jpeg', quality=75)
-        return(fp)
 
     def explain_card(self, text):
         explanations_to_return = ""
@@ -66,23 +36,37 @@ class Tarot:
 
         return explanations_to_return
 
-    def getTarot(self, update: Update, context: CallbackContext):
+    def get_tarot(self, update: Update, context: CallbackContext):
         try:
             size = int(update.message.text.lower().split(' ')[1])
         except ValueError :
             context.bot.sendMessage(chat_id=update.message.chat_id, text=":--D")
             return
 
-        if size < 1 or size > 78:
-            context.bot.sendMessage(chat_id=update.message.chat_id, text=":--D")
-            return
-        image_file = self.get_reading(size)
-        image_file.seek(0)
-        if size > 10:
-            context.bot.sendDocument(chat_id=update.message.chat_id, document=open(image_file.name, 'rb'))
-        else:
-            context.bot.send_photo(chat_id=update.message.chat_id, photo=open(image_file.name, 'rb'))
-        image_file.close()
+        # try using tarot server
+        try:
+            request_params = {
+                "token" : self.tarot_token,
+                "amount" : size
+            }
+            r = requests.post(url = self.tarot_url, data = request_params)
+            if "502 Bad Gateway" in r.text:
+                raise requests.exceptions.HTTPError
+            context.bot.sendMessage(chat_id=update.message.chat_id, text=r.text)
+
+        # yell at tarot server admin if doesn't work
+        except requests.exceptions.RequestException:
+            context.bot.sendMessage(chat_id=update.message.chat_id, text="tarot rikki, " + self.tarot_admin + " korjaa paskas")
+
+    def get_tarot_stats(self, update: Update, context: CallbackContext):
+        try:
+            r = requests.post(url = self.tarot_url)
+            if "502 Bad Gateway" in r.text:
+                    raise requests.exceptions.HTTPError
+            context.bot.sendMessage(chat_id=update.message.chat_id, text=r.text)
+        except requests.exceptions.RequestException:
+            context.bot.sendMessage(chat_id=update.message.chat_id, text="tarot rikki, " + self.tarot_admin + " korjaa paskas")
+
 
     def getReading(self, update: Update, context: CallbackContext):
         message = self.explain_card(update.message.text.lower())
@@ -93,6 +77,8 @@ class Tarot:
         msg = update.message
         if msg.text is not None:
             if re.match(r'^/tarot [0-9]+(?!\S)', msg.text.lower()):
-                self.getTarot(update, context)
+                self.get_tarot(update, context)
+            elif re.match(r'^/tarotstats', msg.text.lower()):
+                self.get_tarot_stats(update, context)
             elif "selitä" in msg.text.lower() or "selitys" in msg.text.lower():
                 self.getReading(update, context)
